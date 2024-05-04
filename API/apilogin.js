@@ -23,7 +23,7 @@ router.post('/', (req, res) => {
     if (major === 'Student') {
         tableName = 'students';
     } else if (major === 'Teacher') {
-        tableName = 'teachers';
+        tableName = 'teachers';jdhsdahsdlkjshlkdasblksadlksabsaldasbfsadnsalksandsaz,xz,
     } else {
         return res.status(400).json({ error: 'Invalid major' });
     }
