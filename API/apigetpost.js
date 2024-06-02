@@ -13,24 +13,10 @@ const db = mysql.createConnection({
 });
 
 router.get('/', (req, res) => {
-    const { id, poster_id, content } = req.query; 
-
-    if (!id || !poster_id || !content) {
-        return res.status(400).json({ message: 'Missing parameters' });
-    }
 
     let sql, values;
 
-    // Phân biệt người dùng bằng poster_id
-    if (poster_id.startsWith('215')) {
-        sql = 'SELECT * FROM posts WHERE id = ? AND student_id = ? AND content = ?';
-        values = [id, poster_id, content];
-    } else if (poster_id.startsWith('115')) {
-        sql = 'SELECT * FROM posts WHERE id = ? AND teacher_id = ? AND content = ?';
-        values = [id, poster_id, content];
-    } else {
-        return res.status(400).json({ message: 'Invalid commenter ID' });
-    }
+    sql = 'SELECT * FROM posts';
 
     db.query(sql, values, (err, result) => {
         if (err) {
