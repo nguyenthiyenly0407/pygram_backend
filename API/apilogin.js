@@ -47,8 +47,8 @@ router.post('/', async (req, res) => {
                 return res.status(400).json({ error: 'User email or password is incorrect' });
             }
 
-            const payload = { userId: user.id, email: email };
-            const JWT_SECRET_KEY = process.env.JWT_SECRET_KEY || 'THIS_IS_A_JWT_SECRET_KEY';
+            const payload = { userId: user.id, email: email, name: user.name };
+            const JWT_SECRET_KEY = process.env.JWT_SECRET_KEY || 'pygram';
             const token = jwt.sign(payload, JWT_SECRET_KEY, { expiresIn: '1d' });
 
             const updateQuery = `UPDATE ${tableName} SET token = ? WHERE id = ?`;

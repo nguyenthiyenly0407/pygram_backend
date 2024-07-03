@@ -111,18 +111,34 @@ const query = util.promisify(db.query).bind(db);
 
 app.get('/api/conversations/:userId', async (req, res) => {
     try {
+        let data = [];
         const userId = req.params.userId;
         console.log('Fetching conversations for userId:', userId); // Debug log
 
         const userIdNumber = parseInt(userId); // Convert userId to number
         console.log('Formatted userIdNumber for JSON_EXTRACT:', userIdNumber);
 
-        // Thực hiện truy vấn SQL để lấy các conversation mà userIdNumber có mặt trong members
-        const querySql = 'SELECT * FROM Conversations WHERE JSON_CONTAINS(members, ?)';
-        const userIdJson = JSON.stringify([userIdNumber]);
+        const querySql = 'SELECT * FROM students WHERE id != ?';
+        const queryTHSql = 'SELECT * FROM teachers WHERE id != ?';
 
-        const results = await query(querySql, [userIdJson]);
-
+        const results = await query(querySql, [userId]);
+        data = results.map((item) => {
+            return {
+                conversationId: `${item.id}_${userId}`,
+                name: item.name,
+                gender: item.gender
+            }
+        })
+        const resultsTH = await query(queryTHSql, [userId]);
+        data.push(
+            ...resultsTH.map(item => {
+                return {
+                    conversationId: `${item.id}_${userId}`,
+                name: item.name,
+                gender: item.gender
+                }
+            })
+        )
         console.log('Conversations found:', results); // Debug log
 
         if (!results || results.length === 0) {
@@ -130,42 +146,7 @@ app.get('/api/conversations/:userId', async (req, res) => {
             return res.status(200).json([]);
         }
 
-        const conversationUserData = await Promise.all(results.map(async (conversation) => {
-            try {
-                console.log('Parsing members for conversation:', conversation); // Debug log
-
-                const members = Array.isArray(conversation.members) ? conversation.members : JSON.parse(conversation.members);
-                console.log('Parsed members:', members); // Debug log
-
-                const receiverId = members.find(member => member !== userIdNumber);
-                console.log('Found receiverId:', receiverId); // Debug log
-
-                if (!receiverId) {
-                    console.error('No receiverId found in conversation:', conversation); // Debug log
-                    return null;
-                }
-
-                let user;
-                if (String(receiverId).startsWith('215')) { // Convert receiverId to string before checking
-                    [user] = await query('SELECT id, name FROM students WHERE id = ?', [receiverId]);
-                } else if (String(receiverId).startsWith('115')) { // Convert receiverId to string before checking
-                    [user] = await query('SELECT id, name FROM teachers WHERE id = ?', [receiverId]);
-                } else {
-                    console.error('Invalid receiverId format:', receiverId); // Debug log
-                    throw new Error('Invalid receiverId format');
-                }
-
-                return { user: user, conversationId: conversation.id };
-            } catch (parseError) {
-                console.error('Error parsing members:', conversation.members, parseError); // Debug log
-                throw parseError;
-            }
-        }));
-
-        // Filter out null values
-        const filteredConversationUserData = conversationUserData.filter(data => data !== null);
-
-        res.status(200).json(filteredConversationUserData);
+        res.status(200).json(data);
     } catch (error) {
         console.error('Error', error);
         res.status(500).json({ message: 'Server error', error: error.message });
@@ -175,18 +156,18 @@ app.get('/api/conversations/:userId', async (req, res) => {
 
 app.post('/api/message', async (req, res) => {
     try {
-        const { conversationId, senderId, message, receiverId } = req.body;
+        const { conversationId, senderId, message } = req.body;
+        const fenId = conversationId.split("_")[0];
+
         if (!senderId || !message) return res.status(400).send('Please fill all required fields');
 
-        if (conversationId === 'new' && receiverId) {
-            const [result] = await db.query('INSERT INTO Conversations (members) VALUES (?)', [JSON.stringify([senderId, receiverId])]);
-            await db.query('INSERT INTO Messages (conversationId, senderId, message) VALUES (?, ?, ?)', [result.insertId, senderId, message]);
+        if (conversationId) {
+            await db.query('INSERT INTO Messages (conversationId, senderId, message, createdAt) VALUES (?, ?, ?,?)', [conversationId, senderId, message,new Date()]);
+            await db.query('INSERT INTO Messages (conversationId, senderId, message, createdAt) VALUES (?, ?, ?,?)', [`${senderId}_${fenId}`, senderId, message,new Date()]);
             return res.status(200).send('Message sent successfully');
-        } else if (!conversationId && !receiverId) {
+        } else if (!conversationId) {
             return res.status(400).send('Please fill all required fields');
         }
-
-        await db.query('INSERT INTO Messages (conversationId, senderId, message) VALUES (?, ?, ?)', [conversationId, senderId, message]);
         res.status(200).send('Message sent successfully');
     } catch (error) {
         console.error('Error', error);
@@ -197,56 +178,29 @@ app.post('/api/message', async (req, res) => {
 app.get('/api/message/:conversationId', async (req, res) => {
     try {
         const conversationId = req.params.conversationId;
+        const userId = conversationId.split('_')[1];
+        let data = [];
+        const querySql = 'SELECT * FROM Messages WHERE conversationId = ?';
 
-        const checkMessages = async (id) => {
-            try {
-                const querySql = 'SELECT * FROM Messages WHERE conversationId = ?';
-                const results = await query(querySql, [id]);
-                
-                console.log('Messages found:', results); // Debug log
-
-                if (!results || results.length === 0) {
-                    console.log(`No messages found for conversationId ${id}`);
-                    return res.status(200).json([]);
-                }
-
-                const messageUserData = await Promise.all(results.map(async (message) => {
-                    let user;
-                    if (String(message.senderId).startsWith('215')) {
-                        [user] = await query('SELECT id, name FROM students WHERE id = ?', [message.senderId]);
-                    } else if (String(message.senderId).startsWith('115')) {
-                        [user] = await query('SELECT id, name FROM teachers WHERE id = ?', [message.senderId]);
-                    } else {
-                        console.error('Invalid senderId format:', message.senderId); // Debug log
-                        throw new Error('Invalid senderId format');
-                    }
-
-                    return { user: user, message: message.message };
-                }));
-
-                console.log("messageuserdata", messageUserData); // Debug log
-
-                res.status(200).json(messageUserData);
-            } catch (error) {
-                console.error('Error fetching messages:', error);
-                res.status(500).send('Error fetching messages');
+        const results = await query(querySql, [conversationId]);
+        data = results.map((item) => {
+            return {
+                id: item.id,
+                conversationId: item.conversationId,
+                isUser: item.senderId === userId,
+                message: item.message,
+                time: item.createdAt
             }
-        };
+        })
 
-        if (conversationId === 'new') {
-            const { senderId, receiverId } = req.query;
-            if (!senderId || !receiverId) return res.status(400).send('Please provide both senderId and receiverId');
-            
-            const [conversation] = await db.query('SELECT * FROM Conversations WHERE JSON_CONTAINS(members, ?) AND JSON_CONTAINS(members, ?)', [JSON.stringify(senderId), JSON.stringify(receiverId)]);
-            
-            if (conversation.length > 0) {
-                checkMessages(conversation[0].id);
-            } else {
-                return res.status(200).json([]);
-            }
-        } else {
-            checkMessages(conversationId);
+        if (!results || results.length === 0) {
+            console.log('No conversations found for userId:', userId);
+            return res.status(200).json([]);
         }
+
+        res.status(200).json(data);
+        
+            
     } catch (error) {
         console.error('Error', error);
         res.status(500).send('Server error');
