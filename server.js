@@ -3,9 +3,17 @@ const mysql = require('mysql');
 const app = express();
 const cors = require('cors');
 const http = require('http');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const bcryptjs = require('bcryptjs');
 const { Server } = require("socket.io");
 const util = require('util')
+const { v4: uuidv4 } = require('uuid');
+const bodyParser = require('body-parser');
+const { parse } = require('json2csv');
+const ExcelJS = require('exceljs');
+app.use(bodyParser.json());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -285,9 +293,239 @@ app.get('/api/users/:userId', async (req, res) => {
     }
 });
 
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        const tempDir = path.join(__dirname, 'temp');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir);
+        }
+        cb(null, tempDir);
+    },
+    filename: function (req, file, cb) {
+        // Keep the original filename
+        cb(null, file.originalname);
+    },
+});
+
+const upload = multer({ storage });
+
+app.post('/upload', upload.single('file'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).send('No files were uploaded.');
+    }
+
+    const filePath = `${req.file.originalname}`;
+
+    const query = 'INSERT INTO uploaded_files (file_path) VALUES (?)';
+    db.query(query, [filePath], (error, results) => {
+        if (error) {
+            console.error('Error saving file path to database:', error);
+            return res.status(500).send('Error saving file path to database');
+        }
+        res.json({ filePath });
+    });
+});
+
+app.get('/files', (req, res) => {
+    const query = 'SELECT * FROM uploaded_files';
+    db.query(query, (error, results) => {
+        if (error) {
+            console.error('Error fetching uploaded files:', error);
+            return res.status(500).send('Error fetching uploaded files');
+        }
+
+        const files = results.map(file => ({ url: file.file_path }));
+        res.json(files);
+    });
+});
+app.delete('/delete/:filename', (req, res) => {
+    const filename = decodeURIComponent(req.params.filename);
+    const filePath = path.join(__dirname, 'temp', filename);
+
+    // Xóa file từ thư mục tạm
+    fs.unlink(filePath, (err) => {
+        if (err) {
+            console.error('Error deleting file:', err);
+            return res.status(500).send('Error deleting file');
+        }
+
+        // Xóa đường dẫn file từ cơ sở dữ liệu
+        const query = 'DELETE FROM uploaded_files WHERE file_path = ?';
+        db.query(query, [`${filename}`], (error, results) => {
+            if (error) {
+                console.error('Error deleting file path from database:', error);
+                return res.status(500).send('Error deleting file path from database');
+            }
+            res.send('File deleted successfully');
+        });
+    });
+});
+app.get('/download/:filename', (req, res) => {
+    const filename = decodeURIComponent(req.params.filename);
+    const filePath = path.join(__dirname, 'temp', filename);
+
+    // Check if the file exists
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).send('File not found');
+    }
+
+    // Set appropriate headers
+    const mimeType = getMimeType(filePath);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', 'attachment; filename=' + filename);
+
+    // Stream the file
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+});
+function getMimeType(filePath) {
+    const ext = path.extname(filePath).toLowerCase();
+    switch (ext) {
+        case '.docx':
+            return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        case '.pdf':
+            return 'application/pdf';
+        case '.pptx':
+            return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+        default:
+            return 'application/octet-stream';
+    }
+}
+app.use('/uploads', express.static(path.join(__dirname, 'temp')));
+app.use('/files', express.static(path.join(__dirname, 'temp')));
+app.use('delete/:filename',express.static(path.join(__dirname, 'temp')))
+// API to add a new quiz with questions and options
+app.post('/quizzes', async (req, res) => {
+    try {
+        const { title, questions } = req.body;
+        const link = uuidv4(); // Generate a unique link for the quiz
+
+        // Insert the quiz
+        const quizResult = await query('INSERT INTO quizzes (title, link) VALUES (?, ?)', [title, link]);
+        const quizId = quizResult.insertId;
+
+        // Insert each question and its options
+        for (let q of questions) {
+            const questionResult = await query('INSERT INTO questions (quiz_id, question, correct_answer) VALUES (?, ?, ?)', [quizId, q.question, q.correctAnswer]);
+            const questionId = questionResult.insertId;
+
+            for (let option of q.options) {
+                await query('INSERT INTO options (question_id, option_text) VALUES (?, ?)', [questionId, option]);
+            }
+        }
+
+        res.json({ message: 'Quiz added!', link: link });
+    } catch (err) {
+        res.status(400).json('Error: ' + err);
+    }
+});
+
+// API to get a quiz by its unique link (without correct answers)
+app.get('/quizzes', async (req, res) => {
+    try {
+        const quizzes = await query('SELECT id, title, link FROM quizzes');
+        res.json(quizzes);
+    } catch (err) {
+        res.status(400).json('Error: ' + err);
+    }
+});
+
+app.get('/quizzes/:link', async (req, res) => {
+    try {
+        const { link } = req.params;
+
+        // Get the quiz by link
+        const quizResults = await query('SELECT id, title, link FROM quizzes WHERE link = ?', [link]);
+        if (quizResults.length === 0) {
+            return res.status(404).json({ message: 'Quiz not found' });
+        }
+        const quiz = quizResults[0];
+
+        // Get questions and options for the quiz
+        const questionsResults = await query('SELECT id, question FROM questions WHERE quiz_id = ?', [quiz.id]);
+        for (let question of questionsResults) {
+            const optionsResults = await query('SELECT id, option_text FROM options WHERE question_id = ?', [question.id]);
+            question.options = optionsResults;
+        }
+        quiz.questions = questionsResults;
+
+        res.json(quiz);
+    } catch (err) {
+        res.status(400).json('Error: ' + err);
+    }
+});
+app.post('/submitquiz', (req, res) => {
+    const { userId, quizId, answers } = req.body;
+
+    // Fetch correct answers from the database
+    const query = `
+        SELECT id, correct_answer
+        FROM questions
+        WHERE quiz_id = ?
+    `;
+    db.query(query, [quizId], (err, results) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
+
+        let correctAnswersCount = 0;
+        results.forEach(question => {
+            if (answers[question.id] === question.correct_answer) {
+                correctAnswersCount++;
+            }
+        });
+
+        const totalQuestions = results.length;
+        const score = correctAnswersCount;
+
+        // Store the score in the database
+        const insertScoreQuery = `
+            INSERT INTO scores (student_id, quiz_id, answers, score, total_questions)
+            VALUES (?, ?, ?, ?, ?)
+        `;
+        db.query(insertScoreQuery, [userId, quizId, JSON.stringify(answers), score, totalQuestions], (err, result) => {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+            res.json({userId, score, totalQuestions });
+        });
+    });
+});
+app.get('/downloadscores/:quizId', async (req, res) => {
+    const { quizId } = req.params;
+  
+    db.query('SELECT student_id, score, total_questions FROM scores WHERE quiz_id = ?', [quizId], async (err, results) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'Error querying the database' });
+      }
+  
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Scores');
+  
+      worksheet.columns = [
+        { header: 'Student ID', key: 'student_id', width: 15 },
+        { header: 'Score', key: 'score', width: 10 },
+        { header: 'Total Questions', key: 'total_questions', width: 15 },
+      ];
+  
+      results.forEach(result => {
+        worksheet.addRow(result);
+      });
+  
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=scores.xlsx');
+  
+      await workbook.xlsx.write(res);
+      res.end();
+    });
+  });
+  
+  
+ 
 
 
 const PORT = 5000;
-server.listen(PORT, () => {
-    console.log(`Server is listening on port ${PORT}`);
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
 });
