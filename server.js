@@ -521,8 +521,66 @@ app.get('/downloadscores/:quizId', async (req, res) => {
     });
   });
   
+  app.get('/api/setting/:id', (req, res) => {
+    const userId = req.params.id;
+    const isTeacher = userId.startsWith('115');
   
- 
+    let query;
+    if (isTeacher) {
+      query = 'SELECT * FROM teachers WHERE id = ?';
+    } else {
+      query = 'SELECT * FROM students WHERE id = ?';
+    }
+  
+    db.query(query, [userId], (err, result) => {
+      if (err) {
+        console.error('Error fetching user information:', err);
+        return res.status(500).json({ message: 'Error fetching user information' });
+      }
+  
+      if (result.length === 0) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+  
+      const user = result[0];
+      res.json({ message: 'Success', user });
+    });
+  });
+  
+  app.put('/api/update', (req, res) => {
+    const { id, name, email, birthday, gender, major } = req.body;
+  
+    // Kiểm tra xem id có bắt đầu bằng 115 hay 215
+    if (id.startsWith('115')) {
+      // Cập nhật bảng teachers
+      db.query(
+        'UPDATE teachers SET name = ?, email = ?, birthday = ?, gender = ?, major = ? WHERE id = ?',
+        [name, email, birthday, gender, major, id],
+        (err, result) => {
+          if (err) {
+            console.error(err);
+            return res.status(500).json({ message: 'Lỗi khi cập nhật thông tin' });
+          }
+          return res.json({ message: 'Cập nhật thông tin thành công' });
+        }
+      );
+    } else if (id.startsWith('215')) {
+      // Cập nhật bảng students
+      db.query(
+        'UPDATE students SET name = ?, email = ?, birthday = ?, gender = ?, major = ? WHERE id = ?',
+        [name, email, birthday, gender, major, id],
+        (err, result) => {
+          if (err) {
+            console.error(err);
+            return res.status(500).json({ message: 'Lỗi khi cập nhật thông tin' });
+          }
+          return res.json({ message: 'Cập nhật thông tin thành công' });
+        }
+      );
+    } else {
+      return res.status(400).json({ message: 'ID không hợp lệ' });
+    }
+  });
 
 
 const PORT = 5000;
