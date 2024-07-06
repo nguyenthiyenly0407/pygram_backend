@@ -10,6 +10,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 const server = http.createServer(app);
+const usersLogin = [];
 const io = new Server(server, {
     cors: {
       origin: "http://localhost:3000",
@@ -58,42 +59,34 @@ app.use('/api/search',apisearchrouter)
 let users = [];
 io.on('connection', socket => {
     console.log('User connected', socket.id);
-    socket.on('addUser', userId => {
-        const isUserExist = users.find(user => user.userId === userId);
-        if (!isUserExist) {
-            const user = { userId, socketId: socket.id };
-            users.push(user);
-            io.emit('getUsers', users);
-        }
-    });
 
-    socket.on('sendMessage', async ({ senderId, receiverId, message, conversationId }) => {
-        const receiver = users.find(user => user.userId === receiverId);
-        const sender = users.find(user => user.userId === senderId);
-        const [user] = await db.query('SELECT id, fullName, email FROM Users WHERE id = ?', [senderId]);
-        if (receiver) {
-            io.to(receiver.socketId).to(sender.socketId).emit('getMessage', {
-                senderId,
-                message,
-                conversationId,
-                receiverId,
-                user: user[0]
-            });
-        } else {
-            io.to(sender.socketId).emit('getMessage', {
-                senderId,
-                message,
-                conversationId,
-                receiverId,
-                user: user[0]
-            });
-        }
+    socket.on('joinRoom', async(data) => {
+        socket.join(data.room);
+    })
+    socket.on('sendMessage', async (data) => {
+        io.emit('newMessage', data);
     });
+    socket.on('login',async (data) => {
+        for(let item of usersLogin) {
+            if(item.id === data.id) {
+                io.emit('newLogin', {newLogin: data,usersLogin});
+                return ;
+            }
+        }
+        usersLogin.push(data);
+        io.emit('newLogin', {newLogin: data,usersLogin});
+    })
+    socket.on('logout', async (data) => {
+        usersLogin = usersLogin.filter(item => item.id !== data.id)
+        console.log(usersLogin);
+        io.emit('newLogout', {newLogout: data, usersLogin});
+    })
 
     socket.on('disconnect', () => {
         users = users.filter(user => user.socketId !== socket.id);
         io.emit('getUsers', users);
     });
+
 });
 app.post('/api/conversation', async (req, res) => {
     try {
@@ -139,10 +132,8 @@ app.get('/api/conversations/:userId', async (req, res) => {
                 }
             })
         )
-        console.log('Conversations found:', results); // Debug log
 
         if (!results || results.length === 0) {
-            console.log('No conversations found for userId:', userId);
             return res.status(200).json([]);
         }
 
@@ -197,7 +188,6 @@ app.get('/api/message/:conversationId', async (req, res) => {
             console.log('No conversations found for userId:', userId);
             return res.status(200).json([]);
         }
-
         res.status(200).json(data);
         
             

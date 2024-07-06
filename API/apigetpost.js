@@ -16,7 +16,19 @@ router.get('/', (req, res) => {
 
     let sql, values;
 
-    sql = 'SELECT * FROM posts';
+    sql = `SELECT
+    posts.id,  content,  s.name as student_name, t.name as teacher_name, created_at
+           FROM
+               posts
+           LEFT JOIN
+               students s
+           ON
+               s.id = posts.student_id
+           LEFT JOIN
+               teachers t
+           ON
+               t.id = posts.teacher_id
+            ORDER BY id DESC`;
 
     db.query(sql, values, (err, result) => {
         if (err) {
