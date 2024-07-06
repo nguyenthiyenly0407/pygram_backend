@@ -20,23 +20,37 @@ router.get('/', (req, res) => {
 
     // Thay đổi câu truy vấn SQL để sử dụng globalPostId thay vì LIMIT 1
     const sql = `
-    SELECT
+  SELECT
     post_id,
-    JSON_ARRAYAGG(
-        JSON_OBJECT('id', comments.id, 'content', content, 'student_id', student_id, 'student_name', s.name, 'teacher_id', t.id, 'teacher_name', t.name)
-            ) AS comments
-        FROM
-            comments
-        LEFT JOIN
-            students s
-        ON
-            s.id = comments.student_id
-        LEFT JOIN
-            teachers t
-        ON
-            t.id = comments.teacher_id
-        GROUP BY
-            post_id;
+    CONCAT(
+        '[',
+        GROUP_CONCAT(
+            CONCAT(
+                '{"id":', comments.id,
+                ',"content":"', REPLACE(IFNULL(content, ''), '"', '\"'), '"',
+                ',"student_id":', IFNULL(comments.student_id, 'null'),
+                ',"student_name":"', IFNULL(REPLACE(s.name, '"', '\"'), ''), '"',
+                ',"teacher_id":', IFNULL(comments.teacher_id, 'null'),
+                ',"teacher_name":"', IFNULL(REPLACE(t.name, '"', '\"'), '"')
+            , '}')
+        SEPARATOR ','
+        ),
+        ']'
+    ) AS comments
+FROM
+    comments
+LEFT JOIN
+    students s
+ON
+    s.id = comments.student_id
+LEFT JOIN
+    teachers t
+ON
+    t.id = comments.teacher_id
+GROUP BY
+    post_id;
+
+
     `;
     db.query(sql, (err, result) => {
         if (err) {
@@ -46,6 +60,7 @@ router.get('/', (req, res) => {
         if (result.length === 0) {
             return res.status(404).json({ message: 'No posts found' });
         }
+        console.log(result);
         res.status(200).json(result.map(item => {
             return {
                 ...item,
