@@ -14,7 +14,9 @@ const bodyParser = require('body-parser');
 const { parse } = require('json2csv');
 const ExcelJS = require('exceljs');
 app.use(bodyParser.json());
-app.use(cors());
+app.use(cors({
+   origin: 'https://pygram-5c526.web.app/'
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 const server = http.createServer(app);
