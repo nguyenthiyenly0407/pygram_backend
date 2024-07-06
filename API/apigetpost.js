@@ -6,31 +6,29 @@ router.use(cors());
 router.use(express.json());
 
 const db = mysql.createConnection({
-    host: "localhost",
+    host: "sql12.freemysqlhosting.net",
     user: "root",
     password: "1234567", 
     database: "signup"
 });
 
 router.get('/', (req, res) => {
-    const { id, poster_id, content } = req.query; 
-
-    if (!id || !poster_id || !content) {
-        return res.status(400).json({ message: 'Missing parameters' });
-    }
 
     let sql, values;
 
-    // Phân biệt người dùng bằng poster_id
-    if (poster_id.startsWith('215')) {
-        sql = 'SELECT * FROM posts WHERE id = ? AND student_id = ? AND content = ?';
-        values = [id, poster_id, content];
-    } else if (poster_id.startsWith('115')) {
-        sql = 'SELECT * FROM posts WHERE id = ? AND teacher_id = ? AND content = ?';
-        values = [id, poster_id, content];
-    } else {
-        return res.status(400).json({ message: 'Invalid commenter ID' });
-    }
+    sql = `SELECT
+    posts.id,  content,  s.name as student_name, t.name as teacher_name, created_at
+           FROM
+               posts
+           LEFT JOIN
+               students s
+           ON
+               s.id = posts.student_id
+           LEFT JOIN
+               teachers t
+           ON
+               t.id = posts.teacher_id
+            ORDER BY id DESC`;
 
     db.query(sql, values, (err, result) => {
         if (err) {
