@@ -14,8 +14,20 @@ const bodyParser = require('body-parser');
 const { parse } = require('json2csv');
 const ExcelJS = require('exceljs');
 app.use(bodyParser.json());
-app.use(cors());
-app.options('*', cors());
+app.use(
+    cors({
+    origin: '*',
+    credentials: true, 
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: [
+    'Origin',
+    'Content-Type',
+    'Accept',
+    'Authorization',
+    'X-Request-With',
+    ],
+    })
+    );
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 const server = http.createServer(app);
