@@ -21,16 +21,16 @@ const server = http.createServer(app);
 const usersLogin = [];
 const io = new Server(server, {
     cors: {
-      origin: "http://localhost:3000",
+      origin: "*",
       
     }
   });
 
 const db = mysql.createConnection({
-    host: "localhost",
-    user: "root",
-    password: "1234567", 
-    database: "signup",
+    host: "sql12.freemysqlhosting.net",
+    user: "sql12718292",
+    password: "GL96MlnVSs", 
+    database: "sql12718292",
     multipleStatements: true
 });
 
@@ -528,6 +528,5 @@ app.get('/downloadscores/:quizId', async (req, res) => {
 
 
 const PORT = 5000;
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
+server.listen(PORT, () => {
+    console.log(`Server is listening on port ${PORT}`)});

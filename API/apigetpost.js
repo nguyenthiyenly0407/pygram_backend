@@ -6,7 +6,7 @@ router.use(cors());
 router.use(express.json());
 
 const db = mysql.createConnection({
-    host: "localhost",
+    host: "sql12.freemysqlhosting.net",
     user: "root",
     password: "1234567", 
     database: "signup"
