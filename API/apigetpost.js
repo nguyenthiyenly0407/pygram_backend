@@ -7,9 +7,10 @@ router.use(express.json());
 
 const db = mysql.createConnection({
     host: "sql12.freemysqlhosting.net",
-    user: "root",
-    password: "1234567", 
-    database: "signup"
+    user: "sql12718292",
+    password: "GL96MlnVSs", 
+    database: "sql12718292",
+    multipleStatements: true
 });
 
 router.get('/', (req, res) => {
