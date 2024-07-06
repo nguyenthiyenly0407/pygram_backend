@@ -136,27 +136,29 @@ app.get('/api/conversations/:userId', async (req, res) => {
         const queryTHSql = 'SELECT * FROM teachers WHERE id != ?';
 
         const results = await query(querySql, [userId]);
-        data = results.map((item) => {
-            return {
-                conversationId: `${item.id}_${userId}`,
-                name: item.name,
-                gender: item.gender
-            }
-        })
-        const resultsTH = await query(queryTHSql, [userId]);
-        data.push(
-            ...resultsTH.map(item => {
+        if(results || results.length > 0) {
+            data = results.map((item) => {
                 return {
                     conversationId: `${item.id}_${userId}`,
-                name: item.name,
-                gender: item.gender
+                    name: item.name,
+                    gender: item.gender
                 }
             })
-        )
-
-        if (!results || results.length === 0) {
-            return res.status(200).json([]);
         }
+        
+        const resultsTH = await query(queryTHSql, [userId]);
+        if(resultsTH || resultsTH.length > 0){
+            data.push(
+                ...resultsTH.map(item => {
+                    return {
+                        conversationId: `${item.id}_${userId}`,
+                    name: item.name,
+                    gender: item.gender
+                    }
+                })
+            )
+        }
+
 
         res.status(200).json(data);
     } catch (error) {
